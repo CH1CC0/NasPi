@@ -1,0 +1,116 @@
+Premessa:
+- installare Raspbian Wheezy
+- aggiornare firmware
+- aggiornare Raspbian
+
+1) NAS - Storage server
+nano \etc\fstab
+	/dev/sda1	/home/directory		ext4	defaults	0	0
+chown username:username Movies/ -R
+apt-get install samba samba-common-bin
+cp /etc/samba/smb.conf /etc/samba/smb.conf.old
+nano /etc/samba/smb.conf
+	Nella sezione ##### Authentication #####
+	#  security = user
+	to
+	  security = user
+/etc/init.d/samba restart
+nano /etc/samba/smb.conf
+	Nella sezione [homes]
+	read only = yes
+	to
+	read only = no
+
+	In fondo aggiungere
+	[usb]
+	comment = USB Share
+	path = /mnt/disk1
+	writeable = Yes
+	only guest = Yes
+	create mask = 0777
+	directory mask = 0777
+	browseable = Yes
+	public = yes
+
+/etc/init.d/samba restart
+useradd username -m -G users
+passwd username
+	-> password
+smbpasswd -a username
+	-> password
+
+
+2) Print & AirPrint server
+sudo apt-get install avahi-daemon avahi-discover libnss-mdns cups cups-pdf gutenprint pycups avahi python2
+-- anche se da errore, passa al comando successivo
+sudo apt-get install cups
+sudo apt-get install python-cups
+sudo apt-get install avahi-daemon
+sudo usermod -aG lpadmin federico
+sudo /etc/init.d/cups start
+sudo /etc/init.d/avahi-daemon start
+sudo nano /etc/cups/cupsd.conf
+-- vedi modifiche su http://rohankapoor.com/2012/06/configuring-the-raspberry-pi-as-an-airprint-server/ —> per compatibilità con IOS 6/7
+sudo /etc/init.d/cups restart
+-- configura la stampante
+sudo mkdir /opt/airprint 
+cd /opt/airprint
+sudo wget -O airprint-generate.py --no-check-certificate https://raw.github.com/tjfontaine/airprint-generate/master/airprint-generate.py
+sudo chmod 755 airprint-generate.py
+sudo ./airprint-generate.py -d /etc/avahi/services
+
+3) Music Player Daemon (MPD) Server
+sudo apt-get mpd mpc
+usermod -G audio -a mpd
+nano /etc/mpd.conf
+-- inserire le seguenti modifiche
+#music_directory "~/music"
+music_directory "/mnt/HD_USB/Music"
+
+# playlist_directory "/var/lib/mpd/playlists"
+playlist_directory "/mnt/HD_USB/Music/playlists"
+
+#bind_to_address "any"
+bind_to_address “raspberry_pi_ip_address”
+
+#port "6600"
+port "6600"
+
+#password "password@read,add,control,admin"
+password "mpd@read,add,control,admin"
+
+audio_output {
+type "alsa"
+name "PiALSA"
+device "hw:0,0"
+}
+--
+mkdir -p /var/lib/mpd
+chown mpd:mpd /var/lib/mpd
+mkdir /mnt/HD_USB/Music/playlists
+sudo service mpd restart
+
+4) Airplay
+sudo apt-get install git libao-dev libssl-dev libcrypt-openssl-rsa-perl libio-socket-inet6-perl libwww-perl avahi-utils libmodule-build-perl
+git clone https://github.com/njh/perl-net-sdp.git perl-net-sdp
+cd perl-net-sdp
+perl Build.PL
+sudo ./Build
+sudo ./Build test
+sudo ./Build install
+cd ..
+git clone https://github.com/hendrikw82/shairport.git
+cd shairport
+make
+./shairport.pl -a AirPi
+
+-- per avvio automatico al boot
+cd shairport
+sudo make install
+sudo cp shairport.init.sample /etc/init.d/shairport
+cd /etc/init.d
+sudo chmod a+x shairport
+sudo update-rc.d shairport defaults
+nano shairport
+-- modifica la stringa
+DAEMON_ARGS=”-w $PIDFILE” to DAEMON_ARGS=”-w $PIDFILE -a AirPi”
